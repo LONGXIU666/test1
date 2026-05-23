@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>灵兽井字棋 · 透明灵境</title>
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Bungee+Inline&display=swap");
+
+        * {
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: "Bungee Inline", cursive;
+            color: #f5f5f5;
+            background-color: #0a0c1a;
+            position: relative;
+            overflow-x: hidden;
+            overflow-y: auto;
+            transition: overflow 0.2s;
+        }
+
+        body.overlay-open {
+            overflow: hidden;
+        }
+
+        /* 背景视频 */
+        video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: -999;
+            pointer-events: none;
+            preload: metadata;
+        }
+
+        /* 主容器 - 精致玻璃质感 */
+        .wrapper {
+            background-color: rgba(85, 172, 238, 0.25);
+            backdrop-filter: blur(8px);
+            padding: 1.5rem 1.2rem;
+            border-radius: 64px;
+            margin: 1.2rem;
+            width: calc(100% - 2.4rem);
+            max-width: 680px;
+            transition: all 0.2s ease;
+            box-shadow: 0 25px 40px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* 标题区 —— 彻底修复表情模糊 */
+        .game-title {
+            text-align: center;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+        /* 两侧表情独立样式：无任何滤镜、阴影、渐变裁剪，保证原生清晰 */
+        .game-title span {
+            font-size: 2.6rem;
+            display: inline-block;
+            filter: none;
+            text-shadow: none;
+            background: none;
+            transform: none;
+            animation: none;
+            /* 强制使用系统高品质emoji字体 */
+            font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiOne Color", sans-serif;
+            line-height: 1;
+            vertical-align: middle;
+            /* 确保无任何模糊效果 */
+            -webkit-font-smoothing: subpixel-antialiased;
+            -moz-osx-font-smoothing: auto;
+        }
+        /* 标题文字单独渐变，不影响两侧表情 */
+        .game-title h1 {
+            font-size: 2rem;
+            font-weight: normal;
+            margin: 0;
+            font-family: "Bungee Inline", cursive;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #FFE6B0, #E3C4FF, #FFB77C);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: inline-block;
+        }
+
+        .title-divider {
+            width: 80px;
+            height: 3px;
+            background: linear-gradient(90deg, #ffd966, #ffb347, #ffd966);
+            margin: 8px auto 18px auto;
+            border-radius: 6px;
+            opacity: 0.9;
+        }
+
+        /* 回合状态栏 */
+        .current-status {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            margin: 0.2rem auto 1.6rem auto;
+            background: rgba(0, 0, 0, 0.45);
+            padding: 12px 28px;
+            border-radius: 100px;
+            width: fit-content;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,220,100,0.6);
+            transition: all 0.2s;
+        }
+        .current-status img {
+            width: 48px;
+            height: auto;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.6));
+            transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+        }
+        .current-status span {
+            font-size: 1.7rem;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0 #1e1a3a;
+            white-space: nowrap;
+        }
+
+        /* 棋盘网格 */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            width: 100%;
+            max-width: 540px;
+            margin: 0 auto 1.8rem auto;
+        }
+
+        .cell {
+            aspect-ratio: 1 / 1;
+            background: rgba(250, 248, 240, 0.92);
+            border-radius: 32px;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.1s ease, background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 12px 20px rgba(0, 0, 0, 0.25);
+            will-change: transform;
+        }
+
+        .cell:active {
+            transform: scale(0.96);
+            background-color: #fff5e0;
+        }
+
+        .cell.dragon:active, .cell.unicorn:active {
+            transform: scale(1);
+        }
+
+        .cell.dragon, .cell.unicorn {
+            background-color: #fef7e8;
+            cursor: default;
+        }
+
+        /* 高亮获胜连线 */
+        .cell.win-highlight {
+            background: radial-gradient(circle at 30% 20%, rgba(255,215,0,0.6), rgba(255,180,40,0.8));
+            box-shadow: 0 0 0 3px #ffea9e, 0 0 22px 4px rgba(255, 220, 70, 0.9);
+            transition: all 0.2s ease;
+            z-index: 2;
+        }
+
+        /* 灵兽图案 */
+        .cell.unicorn::before,
+        .cell.dragon::before,
+        .board.unicorn .cell:not(.dragon):not(.unicorn):hover::before,
+        .board.dragon .cell:not(.dragon):not(.unicorn):hover::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            height: 70%;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            pointer-events: none;
+            transition: opacity 0.1s;
+        }
+
+        .cell.unicorn::before {
+            background-image: url("./1.gif");
+        }
+        .cell.dragon::before {
+            background-image: url("./2.gif");
+        }
+
+        /* 悬停预览半透明 */
+        .board.unicorn .cell:not(.dragon):not(.unicorn):hover::before {
+            background-image: url("./1.gif");
+            opacity: 0.55;
+        }
+        .board.dragon .cell:not(.dragon):not(.unicorn):hover::before {
+            background-image: url("./2.gif");
+            opacity: 0.55;
+        }
+
+        /* 游戏结束遮罩 —— 透明玻璃风格 */
+        .game-end-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 25, 45, 0.3);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 2rem;
+            opacity: 0;
+            transition: opacity 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            pointer-events: none;
+        }
+        .game-end-overlay.show {
+            display: flex;
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* 弹窗卡片 —— 磨砂玻璃 */
+        .winning-message {
+            text-align: center;
+            background: rgba(30, 40, 65, 0.55);
+            backdrop-filter: blur(16px);
+            padding: 0.8rem 2rem;
+            border-radius: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            border: 1px solid rgba(255, 215, 120, 0.7);
+            box-shadow: 0 20px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255,255,200,0.2) inset;
+            transform: scale(0.94);
+            transition: transform 0.28s cubic-bezier(0.34, 1.2, 0.64, 1);
+        }
+        .game-end-overlay.show .winning-message {
+            transform: scale(1);
+        }
+        .winning-message img {
+            width: 64px;
+            height: auto;
+            filter: drop-shadow(0 0 10px #ffcc55);
+            animation: gentleGlow 1.2s ease infinite alternate;
+        }
+        @keyframes gentleGlow {
+            0% { filter: drop-shadow(0 0 4px #ffbb44); opacity: 0.9; }
+            100% { filter: drop-shadow(0 0 18px #ffea88); opacity: 1; }
+        }
+        .winning-message p {
+            font-size: 2.1rem;
+            margin: 0;
+            line-height: 1.2;
+            text-shadow: 2px 2px 0 #1e1a3a;
+            letter-spacing: 2px;
+            color: #fff3cf;
+            font-weight: normal;
+        }
+
+        /* 重置按钮 */
+        .reset-button {
+            color: #fef9e6;
+            font-family: "Bungee Inline", cursive;
+            font-size: 1.9rem;
+            border: none;
+            padding: 12px 34px;
+            background: linear-gradient(145deg, #c299e8, #9f73ce);
+            box-shadow: 0 10px 18px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255,250,180,0.4);
+            cursor: pointer;
+            transition: 0.08s linear;
+            border-radius: 80px;
+            letter-spacing: 2px;
+            font-weight: normal;
+        }
+        .reset-button:active {
+            transform: translate(4px, 4px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* 响应式 */
+        @media (max-width: 640px) {
+            .wrapper { padding: 1rem 0.9rem; border-radius: 48px; }
+            .game-title h1 { font-size: 1.5rem; }
+            .game-title span { font-size: 2.2rem; }
+            .current-status { padding: 6px 20px; gap: 10px; }
+            .current-status img { width: 36px; }
+            .current-status span { font-size: 1.2rem; }
+            .board { gap: 10px; }
+            .cell { border-radius: 24px; }
+            .winning-message p { font-size: 1.6rem; }
+            .winning-message img { width: 48px; }
+            .reset-button { font-size: 1.4rem; padding: 8px 22px; }
+        }
+        @media (max-width: 480px) {
+            .current-status span { font-size: 1rem; white-space: nowrap; }
+            .board { gap: 8px; }
+            .cell { border-radius: 20px; }
+            .winning-message p { font-size: 1.3rem; }
+            .winning-message { gap: 12px; padding: 0.5rem 1.2rem; }
+            .winning-message img { width: 40px; }
+            .game-title span { font-size: 1.9rem; }
+            .game-title h1 { font-size: 1.3rem; }
+        }
+        @media (min-width: 1024px) {
+            .board { gap: 18px; max-width: 560px; }
+            .cell:hover { background-color: #fff9ea; transform: scale(0.97); }
+        }
+
+        /* 预加载隐藏 */
+        .preload-assets { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="preload-assets">
+    <img src="./1.gif" alt="preload-unicorn">
+    <img src="./2.gif" alt="preload-dragon">
+</div>
+
+<video src="./03.mp4" muted loop autoplay playsinline preload="metadata"></video>
+
+<div class="wrapper">
+    <div class="game-title">
+        <span>🦄</span>
+        <h1>灵兽·井字棋</h1>
+        <span>🐉</span>
+    </div>
+    <div class="title-divider"></div>
+
+    <div class="current-status" id="currentStatus">
+        <img src="./1.gif" id="currentBeastImg" alt="回合灵兽">
+        <span id="currentTurnText">独角兽 的回合</span>
+    </div>
+
+    <div class="board" id="board">
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+        <div class="cell" data-cell></div>
+    </div>
+
+    <div class="game-end-overlay" id="gameEndOverlay">
+        <div class="winning-message" data-winning-message>
+            <p></p>
+        </div>
+        <div class="btn-container">
+            <button class="reset-button" id="resetButton">⚡ 再战一局 ⚡</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // DOM 元素
+        const boardEl = document.getElementById('board');
+        const cells = document.querySelectorAll('[data-cell]');
+        const resetBtn = document.getElementById('resetButton');
+        const gameEndOverlay = document.getElementById('gameEndOverlay');
+        const currentBeastImg = document.getElementById('currentBeastImg');
+        const turnTextSpan = document.getElementById('currentTurnText');
+        const winningMsgContainer = document.querySelector('[data-winning-message]');
+        const winningMsgParagraph = document.querySelector('[data-winning-message] p');
+        
+        // 游戏状态
+        let unicornTurn = true;
+        let gameActive = true;
+        let winnerDeclared = false;
+        let pendingTimeout = null;
+        
+        const winPatterns = [
+            [0,1,2], [3,4,5], [6,7,8],
+            [0,3,6], [1,4,7], [2,5,8],
+            [0,4,8], [2,4,6]
+        ];
+        
+        const clearWinHighlights = () => cells.forEach(cell => cell.classList.remove('win-highlight'));
+        const highlightWinningCombination = (combination) => {
+            if (!combination) return;
+            combination.forEach(idx => cells[idx].classList.add('win-highlight'));
+        };
+        const getWinningCombination = (beastClass) => {
+            for (let pattern of winPatterns) {
+                if (pattern.every(idx => cells[idx].classList.contains(beastClass))) return pattern;
+            }
+            return null;
+        };
+        const isDraw = () => [...cells].every(cell => cell.classList.contains('unicorn') || cell.classList.contains('dragon'));
+        const updateTurnUI = () => {
+            if (unicornTurn) {
+                currentBeastImg.src = "./1.gif";
+                currentBeastImg.alt = "unicorn";
+                turnTextSpan.innerText = "🦄 独角兽 的回合";
+            } else {
+                currentBeastImg.src = "./2.gif";
+                currentBeastImg.alt = "dragon";
+                turnTextSpan.innerText = "🐉 烈焰飞龙 的回合";
+            }
+        };
+        const setHoverPreviewClass = () => {
+            boardEl.classList.remove('unicorn', 'dragon');
+            if (gameActive && !winnerDeclared) boardEl.classList.add(unicornTurn ? 'unicorn' : 'dragon');
+        };
+        const placeMark = (cell, beastClass) => cell.classList.add(beastClass);
+        const switchTurn = () => { unicornTurn = !unicornTurn; updateTurnUI(); setHoverPreviewClass(); };
+        const setBodyScrollLock = (lock) => lock ? document.body.classList.add('overlay-open') : document.body.classList.remove('overlay-open');
+        
+        let pendingDrawFlag = false;
+        let pendingWinnerImgSrc = null;
+        let pendingWinnerAlt = null;
+        
+        const showGameOverlay = () => {
+            if (!winnerDeclared && !pendingDrawFlag) return;
+            const oldImg = winningMsgContainer.querySelector('img');
+            if (oldImg) oldImg.remove();
+            if (pendingDrawFlag) {
+                winningMsgParagraph.innerText = "🤝 双兽休战 · 平局 🤝";
+            } else {
+                const winnerImgElem = document.createElement('img');
+                winnerImgElem.src = pendingWinnerImgSrc;
+                winnerImgElem.alt = pendingWinnerAlt;
+                winningMsgContainer.insertBefore(winnerImgElem, winningMsgParagraph);
+                winningMsgParagraph.innerText = ` 君临棋盘 · 神兽加冕 ✨`;
+            }
+            gameEndOverlay.classList.add('show');
+            setBodyScrollLock(true);
+        };
+        
+        const terminateGame = (isDrawGame, winCombination = null) => {
+            if (!gameActive && winnerDeclared) return;
+            if (pendingTimeout) clearTimeout(pendingTimeout);
+            gameActive = false;
+            winnerDeclared = true;
+            boardEl.classList.remove('unicorn', 'dragon');
+            if (!isDrawGame && winCombination) highlightWinningCombination(winCombination);
+            pendingDrawFlag = isDrawGame;
+            if (!isDrawGame) {
+                pendingWinnerImgSrc = unicornTurn ? "./1.gif" : "./2.gif";
+                pendingWinnerAlt = unicornTurn ? "独角兽" : "飞龙";
+            } else {
+                pendingWinnerImgSrc = null;
+                pendingWinnerAlt = null;
+            }
+            pendingTimeout = setTimeout(() => {
+                if (winnerDeclared && !gameActive) showGameOverlay();
+                pendingTimeout = null;
+            }, 3000);
+        };
+        
+        const handleCellClick = (e) => {
+            const cell = e.currentTarget;
+            if (!gameActive || winnerDeclared) return;
+            if (cell.classList.contains('unicorn') || cell.classList.contains('dragon')) return;
+            const currentBeast = unicornTurn ? 'unicorn' : 'dragon';
+            placeMark(cell, currentBeast);
+            const winningComb = getWinningCombination(currentBeast);
+            if (winningComb) { terminateGame(false, winningComb); return; }
+            if (isDraw()) { terminateGame(true, null); return; }
+            switchTurn();
+        };
+        
+        const fullGameReset = () => {
+            if (pendingTimeout) clearTimeout(pendingTimeout);
+            unicornTurn = true;
+            gameActive = true;
+            winnerDeclared = false;
+            pendingDrawFlag = false;
+            pendingWinnerImgSrc = null;
+            pendingWinnerAlt = null;
+            cells.forEach(cell => cell.classList.remove('unicorn', 'dragon', 'win-highlight'));
+            gameEndOverlay.classList.remove('show');
+            setBodyScrollLock(false);
+            const leftoverImg = winningMsgContainer.querySelector('img');
+            if (leftoverImg) leftoverImg.remove();
+            winningMsgParagraph.innerText = '';
+            updateTurnUI();
+            setHoverPreviewClass();
+        };
+        
+        let eventsBound = false;
+        const bindGameEvents = () => {
+            if (eventsBound) return;
+            cells.forEach(cell => cell.addEventListener('click', handleCellClick));
+            resetBtn.addEventListener('click', fullGameReset);
+            eventsBound = true;
+        };
+        
+        const preloadCriticalImages = () => { ["./1.gif", "./2.gif"].forEach(src => { new Image().src = src; }); };
+        const optimizeVideoLoading = () => {
+            const bgVideo = document.querySelector('video');
+            if (bgVideo) {
+                bgVideo.addEventListener('canplaythrough', () => bgVideo.play().catch(e => console.warn("视频自动播放限制", e)), { once: true });
+                if (bgVideo.readyState >= 3) bgVideo.play().catch(() => {});
+            }
+        };
+        
+        const initGame = () => {
+            unicornTurn = true;
+            gameActive = true;
+            winnerDeclared = false;
+            if (pendingTimeout) clearTimeout(pendingTimeout);
+            pendingTimeout = null;
+            pendingDrawFlag = false;
+            pendingWinnerImgSrc = null;
+            pendingWinnerAlt = null;
+            cells.forEach(cell => cell.classList.remove('unicorn', 'dragon', 'win-highlight'));
+            gameEndOverlay.classList.remove('show');
+            setBodyScrollLock(false);
+            const imgExist = winningMsgContainer.querySelector('img');
+            if (imgExist) imgExist.remove();
+            winningMsgParagraph.innerText = '';
+            updateTurnUI();
+            setHoverPreviewClass();
+            bindGameEvents();
+        };
+        
+        document.addEventListener('visibilitychange', () => {
+            const video = document.querySelector('video');
+            if (document.hidden) { if (video && !video.paused) video.pause(); } 
+            else { if (video && video.paused && video.muted) video.play().catch(e => null); }
+        });
+        
+        initGame();
+        preloadCriticalImages();
+        optimizeVideoLoading();
+    })();
+</script>
+</body>
+</html>
